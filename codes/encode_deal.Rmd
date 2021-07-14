@@ -1,0 +1,255 @@
+---
+title: "encode_deal"
+author: "Li Yuan"
+date: "7/13/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load packages
+
+```{r, message=FALSE}
+library(readtext)
+library(antiword)
+library(tidyverse)
+library(ggplot2)
+library(textreadr)
+library(stringi)
+library(textclean)
+library(SemNetCleaner)
+library(readxl)
+```
+
+
+# Load data
+
+```{r}
+deal <- read_csv("deal(1).csv", col_types = cols(.default = "c")) %>% select(`Deal name`, `Signing date`, `Closing date`)
+View(deal)
+
+merge_deal_lawyer <- read_csv("merge_deal_lawyer.csv")
+View(merge_deal_lawyer)
+
+distin_com_lawyer <- read_csv("distinct_binded_lawyer_2020.csv", 
+    col_types = cols(FirmId = col_character(), 
+        `JD Year` = col_character(), ProbabilityOfMove = col_character(), 
+        Notes = col_character()))
+View(distin_com_lawyer)
+```
+
+# encode the deal into number
+
+```{r}
+mapping_index <- deal %>%
+  mutate(Deal_number := 1:n()) %>% 
+  select(Deal_number, `Deal name`) %>%
+  rename(Deal_name = `Deal name`)
+View(mapping_index)
+write_csv(x = mapping_index, file = "map_index.csv")
+```
+
+# Match these new encoded to deal_lawyer_data
+
+```{r}
+encoded_merge_dl <- merge_deal_lawyer %>%
+  left_join(mapping_index, by = c("deal" = "Deal_name")) %>%
+  select(Deal_number, everything(), -deal) 
+View(encoded_merge_dl)
+```
+
+```{r}
+encoded_deal <- deal %>%
+  left_join(mapping_index, by = c("Deal name" = "Deal_name"))
+View(encoded_deal)
+```
+
+# Only keep duplicate lawyer in M&A
+
+```{r}
+new_distinct_com <- distin_com_lawyer %>%
+  distinct(Last, First, `JD Year`, `Law School`, Undergrad, Gender, Race, .keep_all = T)
+View(new_distinct_com)
+write_csv(x = new_distinct_com, file = "keep_MA_first.csv")
+```
+
+# merge using distin_com_lawyer
+
+## First confidence
+
+```{r}
+deal_lawyer_full <- encoded_merge_dl %>%
+  mutate(First = tolower(gsub("\\.$", "", First)), 
+         Last = tolower(gsub("\\.$", "", Last)), 
+         Firm = tolower(gsub("\\.$", "", Law_Firm))) %>%
+  inner_join(new_distinct_com %>% mutate(Firm = tolower(gsub("\\.$", "", Firm)), 
+                                          First = tolower(gsub("\\.$", "", First)), 
+                                          Last = tolower(gsub("\\.$", "", Last))), 
+            by = c("Firm" = "Firm", "First" = "First", "Last" = "Last")) %>% 
+  mutate(First = str_to_title(First), Last = str_to_title(Last)) #%>%
+  #select(-Firm)
+
+
+deal_lawyer_full <- deal_lawyer_full %>%
+  left_join(encoded_deal, by = c("Deal_number" = "Deal_number")) %>%
+  select(Deal_number, `Signing date`, `Closing date`, everything())
+
+View(deal_lawyer_full)
+
+write_csv(x = deal_lawyer_full, file = "com_deal_lawyer_full.csv")
+```
+
+### Anti-join to get rows which are not matched with any rows in y
+
+```{r}
+deal_lawyer_full_no_match <- encoded_merge_dl %>%
+  mutate(First = tolower(gsub("\\.$", "", First)), 
+         Last = tolower(gsub("\\.$", "", Last)), 
+         Firm = tolower(gsub("\\.$", "", Law_Firm))) %>%
+  anti_join(new_distinct_com %>% mutate(Firm = tolower(gsub("\\.$", "", Firm)), 
+                                         First = tolower(gsub("\\.$", "", First)), 
+                                         Last = tolower(gsub("\\.$", "", Last))), 
+            by = c("Firm" = "Firm", "First" = "First", "Last" = "Last")) %>% 
+  mutate(First = str_to_title(First), Last = str_to_title(Last)) %>%
+  select(-Firm)
+
+
+deal_lawyer_full_no_match <- deal_lawyer_full_no_match %>%
+  left_join(encoded_deal, by = c("Deal_number" = "Deal_number")) %>%
+  select(Deal_number, `Signing date`, `Closing date`, everything())
+
+ #View(deal_lawyer_full_no_match)
+
+write_csv(x = deal_lawyer_full_no_match, file = "com_deal_lawyer_full_no_match.csv")
+```
+
+## Second confidence on no match data using first and last name
+
+```{r}
+deal_lawyer_first_last <- deal_lawyer_full_no_match %>%
+  mutate(First = tolower(gsub("\\.$", "", First)), 
+         Last = tolower(gsub("\\.$", "", Last))) %>%
+  inner_join(new_distinct_com %>% mutate(First = tolower(gsub("\\.$", "", First)), 
+                                          Last = tolower(gsub("\\.$", "", Last))), 
+            by = c("First" = "First", "Last" = "Last")) %>% 
+  mutate(First = str_to_title(First), Last = str_to_title(Last))
+
+
+View(deal_lawyer_first_last)
+
+write_csv(x = deal_lawyer_first_last, file = "com_deal_lawyer_first_last.csv")
+```
+
+## Anti-join to get no match
+
+```{r}
+deal_lawyer_first_last_no_match <- deal_lawyer_full_no_match %>%
+  mutate(First = tolower(gsub("\\.$", "", First)), 
+         Last = tolower(gsub("\\.$", "", Last))) %>%
+  anti_join(new_distinct_com %>% mutate(First = tolower(gsub("\\.$", "", First)), 
+                                         Last = tolower(gsub("\\.$", "", Last))), 
+            by = c("First" = "First", "Last" = "Last")) %>% 
+  mutate(First = str_to_title(First), Last = str_to_title(Last))
+
+
+#View(deal_lawyer_first_last_no_match)
+
+write_csv(x = deal_lawyer_first_last_no_match, file = "com_deal_lawyer_first_last_no_match.csv")
+```
+
+# The thrid confidence
+
+```{r}
+deal_lawyer_firm_last <- deal_lawyer_first_last_no_match %>%
+  mutate(Firm = tolower(gsub("\\.$", "", Law_Firm)), 
+         Last = tolower(gsub("\\.$", "", Last))) %>%
+  inner_join(new_distinct_com %>% mutate(Firm = tolower(gsub("\\.$", "", Firm)), 
+                                          Last = tolower(gsub("\\.$", "", Last))), 
+            by = c("Firm" = "Firm", "Last" = "Last")) %>% 
+  mutate(Last = str_to_title(Last)) %>%
+  select(-First.y) %>%
+  rename(First = First.x)
+
+View(deal_lawyer_firm_last)
+
+write_csv(x = deal_lawyer_firm_last, file = "com_deal_lawyer_firm_last.csv")
+```
+
+## Anti-join to get remaining unmatched rows
+
+```{r}
+deal_lawyer_firm_last_no_match <- deal_lawyer_first_last_no_match %>%
+  mutate(Firm = tolower(gsub("\\.$", "", Law_Firm)), 
+         Last = tolower(gsub("\\.$", "", Last))) %>%
+  anti_join(new_distinct_com %>% mutate(Firm = tolower(gsub("\\.$", "", Firm)), 
+                                         Last = tolower(gsub("\\.$", "", Last))), 
+            by = c("Firm" = "Firm", "Last" = "Last")) %>% 
+  mutate(Last = str_to_title(Last)) %>%
+  select(-Firm)
+
+# View(deal_lawyer_firm_last_no_match)
+
+write_csv(x = deal_lawyer_firm_last_no_match, file = "com_deal_lawyer_firm_last_no_match.csv")
+View(deal_lawyer_firm_last_no_match)
+```
+
+# Find duplicates from first and last match
+
+```{r}
+dupli_first_last <- deal_lawyer_first_last %>%
+  count(Deal_number, First, Last) %>%
+  filter(n > 1) %>%
+  arrange(desc(n))
+
+dupli_first_last <- deal_lawyer_first_last %>%
+  inner_join(dupli_first_last, by = c("Deal_number" = "Deal_number", "First" = "First", "Last" = "Last")) %>%
+  select(Deal_number, `Signing date`, `Closing date`, First, MI.x, Last, n, everything()) 
+
+write_csv(x = dupli_first_last, file = "duplicate_first_last.csv")
+View(dupli_first_last)
+```
+
+
+# Find duplicates from firm and last match
+
+```{r}
+dupli_firm_last <- deal_lawyer_firm_last %>%
+  count(Deal_number, Law_Firm, Last) %>%
+  filter(n > 1) %>%
+  arrange(desc(n))
+
+dupli_firm_last <- deal_lawyer_firm_last %>%
+  inner_join(dupli_firm_last, by = c("Deal_number" = "Deal_number", "Law_Firm" = "Law_Firm", "Last" = "Last")) %>%
+  select(Deal_number, `Signing date`, `Closing date`, First, MI.x, Last, n, everything()) 
+
+write_csv(x = dupli_firm_last, file = "duplicate_firm_last.csv")
+View(dupli_firm_last)
+```
+
+# Stack all three matched dataset
+
+```{r}
+col_full <- colnames(deal_lawyer_full)
+col_fl <- colnames(deal_lawyer_first_last)
+col_lf <- colnames(deal_lawyer_firm_last)
+```
+
+```{r}
+length(col_full)
+length(col_fl)
+length(col_lf)
+```
+
+```{r}
+setdiff(col_fl, col_full)
+setdiff(col_full, col_fl)
+```
+
+```{r}
+one_two_three <- rbind(deal_lawyer_full, deal_lawyer_first_last, deal_lawyer_firm_last)
+View(one_two_three)
+write_csv(x = one_two_three, file = "three_matched_stacked.csv")
+```
+
