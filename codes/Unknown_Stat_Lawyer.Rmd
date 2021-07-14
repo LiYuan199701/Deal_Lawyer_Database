@@ -1,0 +1,119 @@
+---
+title: "UnknownStatistics"
+author: "Li Yuan"
+date: "7/14/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load packages
+
+```{r, message=FALSE}
+library(readtext)
+library(antiword)
+library(tidyverse)
+library(ggplot2)
+library(textreadr)
+library(stringi)
+library(textclean)
+library(SemNetCleaner)
+library(readxl)
+```
+
+# Load data
+
+```{r}
+deal <- read_csv("../data/deal/deal(1).csv", col_types = cols(.default = "c"))
+View(deal)
+
+merge_deal_lawyer <- read_csv("../data/deal_lawyer/merge_deal_lawyer.csv")
+View(merge_deal_lawyer)
+
+distin_com_lawyer <- read_csv("../data/lawyer/keep_MA_first.csv", 
+    col_types = cols(.default = "c"))
+View(distin_com_lawyer)
+
+map_index <- read_csv("../data/deal/map_index.csv")
+View(map_index)
+
+encoded_merge_dl <- merge_deal_lawyer %>%
+  left_join(map_index, by = c("deal" = "Deal_name")) %>%
+  select(Deal_number, everything(), -deal) 
+View(encoded_merge_dl)
+
+encoded_deal <- deal %>%
+  left_join(map_index, by = c("Deal name" = "Deal_name")) %>%
+  select(Deal_number, everything(), -`Deal name`)
+View(encoded_deal)
+```
+
+# How many lawyers are unknown (NA and “not disclosed”)? 
+
+## What is the distribution of the missing lawyers by deal value (category), year, and industry sector?  Histogram for each plus mean, standard, median.
+
+```{r}
+missing_number <- encoded_merge_dl %>%
+  filter(is.na(First)) %>% 
+  select(Deal_number) %>%
+  unique() %>%
+  pull()
+
+missing_deal <- encoded_deal %>%
+  filter(Deal_number %in% missing_number) %>% 
+  select(Deal_number, `Industry sector`, `Deal value`, `Signing date`) %>%
+  mutate(year := str_match(string = `Signing date`, pattern = "\\d\\d\\d\\d")) %>%
+  mutate(value := str_extract(`Deal value`, "^\\$.*? (million|billion)")) %>%
+  mutate(value1 := ifelse(grepl("million", value),
+                          str_trim(str_extract(value, "\\d.*? "), "right"), 
+                          as.double(str_trim(str_extract(value, "\\d.*? "), "right")) * 1000))
+missing_deal$value1 <- as.double(missing_deal$value1)
+```
+
+```{r}
+missing_deal %>%
+  group_by(`Industry sector`) %>%
+  count(`Industry sector`) %>%
+  ggplot(aes(y = reorder(`Industry sector`, n), x = n)) +
+  #geom_histogram(stat="count") #+
+  geom_col(fill = "red", color = "white", orientation = "y") + 
+  theme_linedraw() +
+  labs(x="\nIndustry Sector", y="total counts", 
+       title = "Different Industry Sectors of missing lawyers") +
+  theme(legend.title = element_text(size = 10), 
+        legend.text = element_text(size = 10),       
+        axis.text.x = element_text(size = 12),      
+        axis.text.y = element_text(size = 20),       
+        axis.title = element_text(size = 20),  
+        plot.title = element_text(hjust = 0.5, size = 30))
+```
+
+```{r}
+dat <- missing_deal %>%
+  filter(value1 <= 5000)
+colors <- c("mean" = "blue", "median" = "purple")
+dat %>%
+  ggplot(aes(x = value1)) +
+  geom_histogram(breaks = c(seq(0, 5000, by = 50)),
+                 aes(y=..density..),
+                 colour="white", 
+                 fill="red") +
+  geom_density(alpha=.30, fill="black", color = "black") +
+  geom_vline(xintercept = mean(dat$value1), lty= 2, color = "blue") +
+  geom_vline(xintercept = median(dat$value1), lty= 4, color = "purple") +
+  theme_linedraw() +
+  labs(x="\nDeal Value", y="Density", 
+       title = "Density and histograms for Deal Values of missing lawyers",
+       color = "Legend") +
+  theme(axis.text.x = element_text(size = 12),      
+        axis.text.y = element_text(size = 12),       
+        axis.title = element_text(size = 20),  
+        plot.title = element_text(hjust = 0.5, size = 22)) +
+  annotate("text", x =680, y = 0.0039, label = "mean", size = 6) +
+  annotate("text", x = -100, y = 0.0039, label = "median", size = 6) +
+  annotate("text", x = 1300, y = 0.0005, label = "Density Curve", size = 7)
+ggsave(file="../plots/Density_missing_lawyers.pdf", width=10, height=8)
+```
+
