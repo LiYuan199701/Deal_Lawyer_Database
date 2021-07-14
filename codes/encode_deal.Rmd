@@ -27,13 +27,13 @@ library(readxl)
 # Load data
 
 ```{r}
-deal <- read_csv("deal(1).csv", col_types = cols(.default = "c")) %>% select(`Deal name`, `Signing date`, `Closing date`)
+deal <- read_csv("data/deal/deal(1).csv", col_types = cols(.default = "c")) %>% select(`Deal name`, `Signing date`, `Closing date`)
 View(deal)
 
-merge_deal_lawyer <- read_csv("merge_deal_lawyer.csv")
+merge_deal_lawyer <- read_csv("data/deal_lawyer/merge_deal_lawyer.csv")
 View(merge_deal_lawyer)
 
-distin_com_lawyer <- read_csv("distinct_binded_lawyer_2020.csv", 
+distin_com_lawyer <- read_csv("data/lawyer/distinct_binded_lawyer_2020.csv", 
     col_types = cols(FirmId = col_character(), 
         `JD Year` = col_character(), ProbabilityOfMove = col_character(), 
         Notes = col_character()))
