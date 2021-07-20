@@ -1,0 +1,15 @@
+10:28:18 From Albert Yoon to Everyone : Possible source: https://journal.r-project.org/archive/2016/RJ-2016-002/RJ-2016-002.pdf
+10:29:30 From Albert Yoon to Everyone : This is the source of the data: https://www.ssa.gov/oact/babynames/limits.html
+10:43:08 From Albert Yoon to Everyone : https://cran.microsoft.com/snapshot/2018-04-16/web/packages/gender/gender.pdf
+10:43:13 From Albert Yoon to Everyone : This is where the data is in R
+10:51:26 From Albert Yoon to Everyone : https://archive.ics.uci.edu/ml/datasets/Gender+by+Name#
+10:51:38 From Albert Yoon to Everyone : https://archive.ics.uci.edu/ml/machine-learning-databases/00591/
+11:04:21 From Albert Yoon to Everyone : This dataset combines raw counts for first/given names of male and female babies in those time periods, and then calculates a probability for a name given the aggregate count.
+11:10:12 From Tracey George (Vanderbilt) to Everyone : If name appears twice, then use gender for higher count.
+11:10:21 From Tracey George (Vanderbilt) to Everyone : If name appears once, use gender.
+11:12:35 From Tracey George (Vanderbilt) to Everyone : If name appears twice, use gender if one gender is at least 75% of all observations.  If Albert appears 1000 times and the person is male at least 750 times, then code as male
+11:12:57 From Tracey George (Vanderbilt) to Everyone : If Albert appears 1000 times and the person is male 60 times, then code as "unclear".
+11:14:16 From Tracey George (Vanderbilt) to Everyone : If Albert appears 1000 times and the person is male 600 times (or any number between 500 and 749), then code as unclear
+11:26:35 From Tracey George (Vanderbilt) to Everyone : LLM
+11:32:19 From Albert Yoon to Everyone : alberthyoon@gmail.com
+11:32:40 From Li Yuan to Everyone : https://join.slack.com/t/deallawyerstudy/shared_invite/zt-t1s7hd78-_DaHE9zfx48GV2awcLNK7g

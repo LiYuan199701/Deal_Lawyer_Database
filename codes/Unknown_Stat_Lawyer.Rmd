@@ -1,12 +1,19 @@
 ---
-title: "UnknownStatistics"
+title: "Compare missing versus non-missing Statistics"
 author: "Li Yuan"
 date: "7/14/2021"
+geometry: margin=1.1cm
 output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, cache = T, 
+                      prompt = T,
+                      tidy = T,
+                      fig.fullwidth=TRUE, 
+                      fig.align = 'center',
+                      fig.width = 15,
+                      fig.height = 8)
 ```
 
 # Load packages
@@ -21,40 +28,52 @@ library(stringi)
 library(textclean)
 library(SemNetCleaner)
 library(readxl)
+
+library(patchwork)
+library(ggrepel)
+library(gghighlight)
+library(paletteer)
+library(ggExtra)
+library(ggbeeswarm)
+library(kableExtra)
+library(caret)
+library(randomForest)
 ```
 
 # Load data
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 deal <- read_csv("../data/deal/deal(1).csv", col_types = cols(.default = "c"))
-View(deal)
+#View(deal)
 
 merge_deal_lawyer <- read_csv("../data/deal_lawyer/merge_deal_lawyer.csv")
-View(merge_deal_lawyer)
+#View(merge_deal_lawyer)
 
 distin_com_lawyer <- read_csv("../data/lawyer/keep_MA_first.csv", 
     col_types = cols(.default = "c"))
-View(distin_com_lawyer)
+#View(distin_com_lawyer)
 
 map_index <- read_csv("../data/deal/map_index.csv")
-View(map_index)
+#View(map_index)
 
 encoded_merge_dl <- merge_deal_lawyer %>%
   left_join(map_index, by = c("deal" = "Deal_name")) %>%
   select(Deal_number, everything(), -deal) 
-View(encoded_merge_dl)
+#View(encoded_merge_dl)
 
 encoded_deal <- deal %>%
   left_join(map_index, by = c("Deal name" = "Deal_name")) %>%
   select(Deal_number, everything(), -`Deal name`)
-View(encoded_deal)
+#View(encoded_deal)
 ```
 
 # How many lawyers are unknown (NA and “not disclosed”)? 
 
 ## What is the distribution of the missing lawyers by deal value (category), year, and industry sector?  Histogram for each plus mean, standard, median.
 
-```{r}
+### Counts of Missing Lawyers
+
+```{r echo=FALSE}
 missing_number <- encoded_merge_dl %>%
   filter(is.na(First)) %>% 
   select(Deal_number) %>%
@@ -72,8 +91,8 @@ missing_deal <- encoded_deal %>%
 missing_deal$value1 <- as.double(missing_deal$value1)
 ```
 
-```{r}
-missing_deal %>%
+```{r echo=FALSE}
+p1_miss <- missing_deal %>%
   group_by(`Industry sector`) %>%
   count(`Industry sector`) %>%
   ggplot(aes(y = reorder(`Industry sector`, n), x = n)) +
@@ -84,13 +103,53 @@ missing_deal %>%
        title = "Different Industry Sectors of missing lawyers") +
   theme(legend.title = element_text(size = 10), 
         legend.text = element_text(size = 10),       
-        axis.text.x = element_text(size = 12),      
-        axis.text.y = element_text(size = 20),       
-        axis.title = element_text(size = 20),  
-        plot.title = element_text(hjust = 0.5, size = 30))
+        axis.text.x = element_text(size = 10),      
+        axis.text.y = element_text(size = 10),       
+        axis.title = element_text(size = 10),  
+        plot.title = element_text(hjust = 0.5, size = 15))
+p1_miss
 ```
 
-```{r}
+### Counts of non-missing lawyers
+
+```{r echo=FALSE}
+non_missing_deal <- encoded_deal %>%
+  filter(!Deal_number %in% missing_number) %>% 
+  select(Deal_number, `Industry sector`, `Deal value`, `Signing date`) %>%
+  mutate(year := str_match(string = `Signing date`, pattern = "\\d\\d\\d\\d")) %>%
+  mutate(value := str_extract(`Deal value`, "^\\$.*? (million|billion)")) %>%
+  mutate(value1 := ifelse(grepl("million", value),
+                          str_trim(str_extract(value, "\\d.*? "), "right"), 
+                          as.double(str_trim(str_extract(value, "\\d.*? "), "right")) * 1000))
+non_missing_deal$value1 <- as.double(non_missing_deal$value1)
+# View(non_missing_deal)
+
+p1_non <- non_missing_deal %>%
+  group_by(`Industry sector`) %>%
+  count(`Industry sector`) %>%
+  ggplot(aes(y = reorder(`Industry sector`, n), x = n)) +
+  #geom_histogram(stat="count") #+
+  geom_col(fill = "red", color = "white", orientation = "y") + 
+  theme_linedraw() +
+  labs(x="\nIndustry Sector", y="total counts", 
+       title = "Different Industry Sectors of non-missing lawyers") +
+  theme(legend.title = element_text(size = 10), 
+        legend.text = element_text(size = 10),       
+        axis.text.x = element_text(size = 10),      
+        axis.text.y = element_text(size = 10),       
+        axis.title = element_text(size = 10),  
+        plot.title = element_text(hjust = 0.5, size = 15))
+p1_non
+```
+
+
+```{r eval=FALSE, include=FALSE}
+p1_miss / p1_non
+```
+
+### Distribution and Density curve of deal values of missing lawyers
+
+```{r echo=FALSE}
 dat <- missing_deal %>%
   filter(value1 <= 5000)
 colors <- c("mean" = "blue", "median" = "purple")
@@ -101,19 +160,695 @@ dat %>%
                  colour="white", 
                  fill="red") +
   geom_density(alpha=.30, fill="black", color = "black") +
-  geom_vline(xintercept = mean(dat$value1), lty= 2, color = "blue") +
-  geom_vline(xintercept = median(dat$value1), lty= 4, color = "purple") +
+  geom_vline(xintercept = mean(dat$value1), lty= 2, color = "blue", lwd = 2.5) +
+  geom_vline(xintercept = median(dat$value1), lty= 4, color = "purple", lwd = 2.5) +
   theme_linedraw() +
   labs(x="\nDeal Value", y="Density", 
        title = "Density and histograms for Deal Values of missing lawyers",
        color = "Legend") +
   theme(axis.text.x = element_text(size = 12),      
         axis.text.y = element_text(size = 12),       
-        axis.title = element_text(size = 20),  
-        plot.title = element_text(hjust = 0.5, size = 22)) +
+        axis.title = element_text(size = 15),  
+        plot.title = element_text(hjust = 0.5, size = 15)) +
   annotate("text", x =680, y = 0.0039, label = "mean", size = 6) +
   annotate("text", x = -100, y = 0.0039, label = "median", size = 6) +
   annotate("text", x = 1300, y = 0.0005, label = "Density Curve", size = 7)
 ggsave(file="../plots/Density_missing_lawyers.pdf", width=10, height=8)
 ```
+
+```{r echo=FALSE}
+missing_deal <- missing_deal %>%
+  mutate(type := "missing")
+non_missing_deal <- non_missing_deal %>%
+  mutate(type := "non_missing")
+miss_non_miss <- rbind(missing_deal, non_missing_deal)
+#View(miss_non_miss)
+```
+
+```{r echo=FALSE}
+dat <- non_missing_deal %>%
+  filter(value1 <= 5000)
+colors <- c("mean" = "blue", "median" = "purple")
+dat %>%
+  ggplot(aes(x = value1)) +
+  geom_histogram(breaks = c(seq(0, 5000, by = 50)),
+                 aes(y=..density..),
+                 colour="white", 
+                 fill="red") +
+  geom_density(alpha=.30, fill="black", color = "black") +
+  geom_vline(xintercept = mean(dat$value1), lty= 2, color = "blue", lwd = 2.5) +
+  geom_vline(xintercept = median(dat$value1), lty= 4, color = "purple", lwd = 2.5) +
+  theme_linedraw() +
+  labs(x="\nDeal Value", y="Density", 
+       title = "Density and histograms for Deal Values of non-missing lawyers",
+       color = "Legend") +
+  theme(axis.text.x = element_text(size = 12),      
+        axis.text.y = element_text(size = 12),       
+        axis.title = element_text(size = 15),  
+        plot.title = element_text(hjust = 0.5, size = 15)) +
+  annotate("text", x =680, y = 0.0039, label = "mean", size = 6) +
+  annotate("text", x = -100, y = 0.0039, label = "median", size = 6) +
+  annotate("text", x = 1300, y = 0.0005, label = "Density Curve", size = 7)
+ggsave(file="../plots/Density_non_missing_lawyers.pdf", width=10, height=8)
+```
+
+#### Put them together to compare
+
+```{r echo=FALSE}
+dat <- miss_non_miss %>%
+  filter(value1 <= 5000)
+dat %>%
+  ggplot(aes(x = value1)) +
+  geom_histogram(aes(y = ..density..,
+                      fill = type), 
+                 alpha = 0.5, 
+                 breaks = c(seq(0, 5000, by = 50)), 
+                 position = "identity",
+                 color = "white") +
+  geom_density(aes(x = value1, colour = type), lwd = 1.7, alpha = 0.5) + 
+  theme_linedraw() + 
+  scale_fill_manual(values = c("red", "black")) +
+  scale_colour_manual(values = c("red", "black")) +
+  labs(x="\nDeal Value", y="Density", 
+       title = "Density and histograms for Deal Values of missing and non-missing lawyers") +
+  theme(axis.text.x = element_text(size = 12),      
+        axis.text.y = element_text(size = 12),       
+        axis.title = element_text(size = 15),  
+        plot.title = element_text(hjust = 0.5, size = 15))
+ggsave(file="../plots/Density_non_missing_missing_lawyers.pdf", width=10, height=8)
+```
+
+### Mean, Median and Standard Deviation of deal values
+
+```{r}
+miss_non_miss %>%
+  group_by(type) %>%
+  summarise(min := min(value1, na.rm = T), 
+            mean := mean(value1, na.rm = T), 
+            median := median(value1, na.rm = T), 
+            max := max(value1, na.rm = T),
+            sd := sd(value1, na.rm = T)) %>%
+  kbl(caption = "Summary Stats Table comparing missing and non-missing", booktabs = T) %>%
+kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+**Boxplot for missing and non-missing**
+
+```{r}
+miss_non_miss %>%
+  filter(value1 <= 1500) %>%
+  ggplot(aes(x = value1)) +
+  geom_boxplot(aes(fill = type), 
+               na.rm = F, 
+               notch = T,
+               varwidth = T,
+               orientation = "y",
+               outlier.colour = "red") +
+  theme_linedraw() +
+  labs(x="\nDeal Value", y="Type", 
+       title = "Boxplot for Deal Values of missing and non-missing lawyers") +
+  theme(axis.text.x = element_text(size = 12),      
+        axis.text.y = element_text(size = 12),       
+        axis.title = element_text(size = 15),  
+        plot.title = element_text(hjust = 0.5, size = 15))
+```
+
+# How many law firms are unknown (NA and “not disclosed”)?    
+
+## What is the distribution of the missing law firms by the size (in dollars) of the deal, year, and industry?  Histogram each.
+
+### Extract corresponding dataset
+
+```{r echo=FALSE}
+missing_law_firm <- encoded_merge_dl %>%
+  filter(grepl(pattern = "Not ", Law_Firm))
+#View(missing_law_firm)
+
+missing_law_firm <- encoded_deal %>%
+  filter(Deal_number %in% (missing_law_firm %>% pull(Deal_number))) %>% 
+  select(Deal_number, `Industry sector`, `Deal value`, `Signing date`) %>%
+  mutate(year := str_match(string = `Signing date`, pattern = "\\d\\d\\d\\d")) %>%
+  mutate(value := str_extract(`Deal value`, "^\\$.*? (million|billion)")) %>%
+  mutate(value1 := ifelse(grepl("million", value),
+                          str_trim(str_extract(value, "\\d.*? "), "right"), 
+                          as.double(str_trim(str_extract(value, "\\d.*? "), "right")) * 1000))
+missing_law_firm$value1 <- as.double(missing_law_firm$value1)
+#View(missing_law_firm)
+
+non_missing_law_firm <- encoded_deal %>%
+  filter(!Deal_number %in% (missing_law_firm %>% pull(Deal_number))) %>% 
+  select(Deal_number, `Industry sector`, `Deal value`, `Signing date`) %>%
+  mutate(year := str_match(string = `Signing date`, pattern = "\\d\\d\\d\\d")) %>%
+  mutate(value := str_extract(`Deal value`, "^\\$.*? (million|billion)")) %>%
+  mutate(value1 := ifelse(grepl("million", value),
+                          str_trim(str_extract(value, "\\d.*? "), "right"), 
+                          as.double(str_trim(str_extract(value, "\\d.*? "), "right")) * 1000))
+non_missing_law_firm$value1 <- as.double(non_missing_law_firm$value1)
+#View(non_missing_law_firm)
+```
+
+### Bar plots for missing law firms
+
+```{r echo=FALSE}
+missing_law_firm %>%
+  group_by(`Industry sector`) %>%
+  count(`Industry sector`) %>%
+  ggplot(aes(y = reorder(`Industry sector`, n), x = n)) +
+  #geom_histogram(stat="count") #+
+  geom_col(fill = "red", color = "white", orientation = "y") + 
+  theme_linedraw() +
+  labs(x="\nIndustry Sector", y="total counts", 
+       title = "Different Industry Sectors of missing law firms") +
+  theme(legend.title = element_text(size = 10), 
+        legend.text = element_text(size = 10),       
+        axis.text.x = element_text(size = 10),      
+        axis.text.y = element_text(size = 10),       
+        axis.title = element_text(size = 15),  
+        plot.title = element_text(hjust = 0.5, size = 15))
+```
+
+### Bar plots for non_missing law firms
+
+```{r echo=FALSE}
+non_missing_law_firm %>%
+  group_by(`Industry sector`) %>%
+  count(`Industry sector`) %>%
+  ggplot(aes(y = reorder(`Industry sector`, n), x = n)) +
+  #geom_histogram(stat="count") #+
+  geom_col(fill = "red", color = "white", orientation = "y") + 
+  theme_linedraw() +
+  labs(x="\nIndustry Sector", y="total counts", 
+       title = "Different Industry Sectors of non-missing law firms") +
+  theme(legend.title = element_text(size = 10), 
+        legend.text = element_text(size = 10),       
+        axis.text.x = element_text(size = 10),      
+        axis.text.y = element_text(size = 10),       
+        axis.title = element_text(size = 15),  
+        plot.title = element_text(hjust = 0.5, size = 15))
+```
+
+### Histogram and density curves to compare them
+
+#### Combine two dataset marked by types
+
+```{r}
+missing_law_firm <- missing_law_firm %>%
+  mutate(type := "missing")
+non_missing_law_firm <- non_missing_law_firm %>%
+  mutate(type := "non_missing")
+miss_non_miss_law_firm <- rbind(missing_law_firm, non_missing_law_firm)
+View(miss_non_miss_law_firm)
+```
+
+#### Plot it based on types
+
+```{r echo=FALSE}
+dat <- miss_non_miss_law_firm %>%
+  filter(value1 <= 2500)
+dat %>%
+  ggplot(aes(x = value1)) +
+  geom_histogram(aes(y = ..density..,
+                      fill = type), 
+                 alpha = 0.5, 
+                 breaks = c(seq(0, 2500, by = 50)), 
+                 position = "identity",
+                 color = "white") +
+  geom_density(aes(x = value1, colour = type), lwd = 1.7, alpha = 0.5) + 
+  theme_linedraw() + 
+  scale_fill_manual(values = c("red", "black")) +
+  scale_colour_manual(values = c("red", "black")) +
+  labs(x="\nDeal Value", y="Density", 
+       title = "Density and histograms for Deal Values of missing and non-missing law firms") +
+  theme(axis.text.x = element_text(size = 10),      
+        axis.text.y = element_text(size = 10),       
+        axis.title = element_text(size = 15),  
+        plot.title = element_text(hjust = 0.5, size = 15))
+ggsave(file="../plots/Density_non_missing_missing_law.pdf", width=10, height=8)
+```
+
+### Mean, Median and Standard Deviation
+
+```{r}
+miss_non_miss_law_firm %>%
+  group_by(type) %>%
+  summarise(min := min(value1, na.rm = T), 
+            mean := mean(value1, na.rm = T), 
+            median := median(value1, na.rm = T), 
+            max := max(value1, na.rm = T),
+            sd := sd(value1, na.rm = T)) %>%
+  kbl(caption = "Summary Stats Table comparing missing and non-missing", booktabs = T) %>%
+kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+# How many deal attorneys are missing biographical information? 
+## What is the distribution of the missing data – are these mostly from earlier years, for example?
+
+## Load the no-matched data set
+
+```{r, message=FALSE}
+com_deal_lawyer_firm_last_no_match <- read_csv("../data/confidence_match/com_deal_lawyer_firm_last_no_match.csv")
+View(com_deal_lawyer_firm_last_no_match)
+```
+
+## attorneys without biographical info
+
+```{r}
+att_miss_bio <- com_deal_lawyer_firm_last_no_match %>%
+  drop_na(First) %>%
+  mutate(year := str_match(string = `Signing date`, pattern = "\\d\\d\\d\\d"))
+#View(att_miss_bio)
+
+att_miss_bio %>%
+  distinct(First, Last) %>%
+  nrow
+```
+
+There are 904 attorneys without biographical info.
+
+## Distribution of Years
+
+```{r echo=FALSE}
+att_miss_bio %>%
+ distinct(First, Last, .keep_all = T) %>%
+  ggplot(aes(x = year)) +
+  geom_histogram(stat="count", fill = "red", color = "white") +
+  labs(title = "Counts of attorneys without biograh info") +
+  theme_linedraw() +
+  theme(axis.text.x = element_text(size = 10),      
+        axis.text.y = element_text(size = 10),       
+        axis.title = element_text(size = 15),  
+        plot.title = element_text(hjust = 0.5, size = 15))
+```
+
+## Distribution of deal type
+
+```{r echo=FALSE}
+p_without <- att_miss_bio %>%
+   distinct(First, Last, .keep_all = T) %>%
+    ggplot(aes(x = year)) +
+    geom_histogram(stat="count", aes(fill = Type), position = position_dodge2(), width = .4) +
+    labs(title = "Counts of attorneys without biograh info grouped by type and year") +
+    theme_linedraw() +
+    theme(axis.text.x = element_text(size = 10),      
+          axis.text.y = element_text(size = 10),       
+          axis.title = element_text(size = 13),  
+          plot.title = element_text(hjust = 0.5, size = 13))
+```
+## Distribution of attorneys with biograh info
+
+```{r}
+three_matched_stacked <- read_csv("../data/confidence_match/three_matched_stacked.csv", col_types = cols(.default = "c"))
+#View(three_matched_stacked)
+
+# If duplicates, keep attorneys from MA only
+dis_three_matched_stacked <- three_matched_stacked %>%
+  distinct(Deal_number, `Signing date`, First, Last, Law_Firm, .keep_all = T)
+#View(dis_three_matched_stacked)
+```
+
+```{r echo=FALSE}
+p_with <- dis_three_matched_stacked %>%
+  distinct(First, Last, `JD Year`, `Law School`, Undergrad, Gender, Race, .keep_all = T) %>%
+  select(Deal_number, `Signing date`, First, MI.x, Last, Source, Type) %>%
+  mutate(year := str_match(string = `Signing date`, pattern = "\\d\\d\\d\\d")) %>%
+  ggplot(aes(x = year)) +
+  geom_histogram(stat="count", aes(fill = Type), position = position_dodge2(), width = .4) +
+  labs(title = "Counts of attorneys with biograh info grouped by type and year") +
+  theme_linedraw() +
+  theme(axis.text.x = element_text(size = 10),      
+        axis.text.y = element_text(size = 10),       
+        axis.title = element_text(size = 13),  
+        plot.title = element_text(hjust = 0.5, size = 13))
+```
+
+## Compare them together
+
+```{r}
+p_with / p_without
+```
+
+# How many deals are missing attorneys’ biographical information?
+
+```{r}
+att_miss_bio %>%
+  distinct(Deal_number) %>%
+  nrow()
+```
+
+There are 1139 deals without attorneys' biograh info.
+
+## Counts of deals without attorneys' biograh info grouped by Year and Deal Type.
+
+```{r echo=FALSE}
+p_without <- att_miss_bio %>%
+  distinct(Deal_number, .keep_all = T) %>%
+  ggplot(aes(x = year)) +
+  geom_histogram(stat="count", aes(fill = Type), position = position_dodge2(), width = .4) +
+  labs(title = "Counts of attorneys without biograh info grouped by type and year") +
+  theme_linedraw() +
+  theme(axis.text.x = element_text(size = 10),      
+        axis.text.y = element_text(size = 10),       
+        axis.title = element_text(size = 13),  
+        plot.title = element_text(hjust = 0.5, size = 13))
+
+p_with <- dis_three_matched_stacked %>%
+  distinct(Deal_number, .keep_all = T) %>%
+  mutate(year := str_match(string = `Signing date`, pattern = "\\d\\d\\d\\d")) %>%
+  ggplot(aes(x = year)) +
+  geom_histogram(stat="count", aes(fill = Type), position = position_dodge2(), width = .4) +
+  labs(title = "Counts of attorneys with biograh info grouped by type and year") +
+  theme_linedraw() +
+  theme(axis.text.x = element_text(size = 10),      
+        axis.text.y = element_text(size = 10),       
+        axis.title = element_text(size = 13),  
+        plot.title = element_text(hjust = 0.5, size = 13))
+p_without / p_with
+```
+
+# Create a summary table of the number of deals, gender breakdown, age distribution (of lawyers appearing on the deal); school distribution (i.e., most common law school attended), law firm distribution (i.e., most common law firms appearing on the deal); types of deals (e.g., health care; financial services, etc.); size of deal
+
+## a summary table of the number of deals, gender breakdown, age distribution (of lawyers appearing on the deal)
+
+**We consider 25 years old as average ages when students graduate from law school.**
+
+```{r echo=FALSE}
+dis_three_matched_stacked$`JD Year` <- 
+  as.integer(dis_three_matched_stacked$`JD Year`, "%Y")
+```
+
+```{r echo=FALSE}
+dis_three_matched_stacked <- dis_three_matched_stacked %>%
+  mutate(age := 25 + 2021 - `JD Year`)
+```
+
+```{r echo=FALSE}
+dis_three_matched_stacked <- dis_three_matched_stacked %>%
+  mutate(age_breaks := case_when(
+    age <= 30 ~ "age <= 30",
+    age > 30 & age <= 45 ~ "30 < age <= 45",
+    age > 45 & age <= 60 ~ "45 < age <= 60",
+    age > 60 ~ "age > 60"
+  ))
+```
+
+```{r}
+dis_three_matched_stacked %>%
+  drop_na(Gender, age_breaks) %>%
+  group_by(Gender, age_breaks) %>%
+  count() %>% 
+  arrange(desc(n)) %>%
+  kbl(caption = "Summary Stats Table comparing missing and non-missing", 
+      booktabs = T) %>%
+kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+## school distribution (i.e., most common law school attended), law firm distribution (i.e., most common law firms appearing on the deal)
+
+**Please see attachment csv file for full list data here.**
+```{r}
+dis_three_matched_stacked %>%
+  drop_na(Gender, `Law School`) %>%
+  group_by(`Law School`, Law_Firm) %>% 
+  count() %>% 
+  arrange(desc(n)) %>% 
+  write_csv(file = "../data/deal_lawyer/distri_law_sch_firm.csv")
+```
+
+```{r echo=FALSE}
+dis_three_matched_stacked %>%
+  drop_na(Gender, `Law School`) %>%
+  group_by(`Law School`, Law_Firm) %>% 
+  count() %>% 
+  arrange(desc(n)) %>%
+  head(30) %>%
+  kbl(caption = "Top 30 most law school and law firm attended", booktabs = T) %>%
+  kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+```{r}
+dis_three_matched_stacked %>%
+  drop_na(Gender, `Law School`) %>%
+  group_by(Gender, `Law School`) %>%
+  count() %>%
+  arrange(desc(n)) %>%
+  ungroup(Gender, `Law School`) %>%
+  top_n(50) %>%
+ggplot(aes(y = reorder(`Law School`, n), x = n)) +
+  geom_col(position = position_dodge2(), 
+           width = .4,
+           orientation = "y",
+           aes(fill = Gender)) +
+  labs(title = "Counts of lawyers grouped by gender and law school",
+       y = "Counts") +
+  theme_linedraw() +
+  theme(axis.text.x = element_text(size = 10),      
+        axis.text.y = element_text(size = 10),       
+        axis.title = element_text(size = 15),  
+        plot.title = element_text(hjust = 0.5, size = 15))
+```
+
+## types of deals (e.g., health care; financial services, etc.); size of deal
+
+```{r echo=FALSE}
+dis_three_matched_stacked$Deal_number <- 
+  as.integer(dis_three_matched_stacked$Deal_number)
+```
+
+```{r echo=FALSE}
+type_value_deal <- dis_three_matched_stacked %>%
+  left_join(encoded_deal, by = c("Deal_number" = "Deal_number")) %>%
+  select(Deal_number, First, Last, Law_Firm, Type, `Industry sector`, `Deal value`) %>% 
+  mutate(value := str_extract(`Deal value`, "^\\$.*? (million|billion)")) %>%
+  mutate(value1 := ifelse(grepl("million", value),
+                          str_trim(str_extract(value, "\\d.*? "), "right"), 
+                          as.double(str_trim(str_extract(value, "\\d.*? "), "right")) * 1000))
+```
+
+```{r}
+type_value_deal %>%
+  group_by(`Industry sector`) %>%
+  count(sort = T) %>%
+  ungroup(`Industry sector`) %>%
+  filter(n >= 10) %>%
+  kbl(caption = "Industry Sector Count", booktabs = T) %>%
+kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+```{r}
+type_value_deal %>%
+  drop_na(value1) %>%
+  mutate(value_breaks := case_when(
+    value1 <= 250 ~ "value <= 250",
+    value1 > 250 & value1 <= 500 ~ "250 < value <= 500",
+    value1 > 500 & value1 <= 1500 ~ "500 < value <= 1500",
+    value1 > 1500 ~ "1500 < value"
+  )) %>%
+  group_by(Type, value_breaks) %>%
+  count(sort = T) %>%
+  ungroup() %>%
+  kbl(caption = "Counts of deals grouped by types and value\\_breaks", booktabs = T) %>%
+kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+## Breakdown by buyer and seller in the deals. We think that law firms and M&A lawyers appear on both sides of the deal with roughly the same probability, but it would be helpful to know if this were true.
+
+```{r}
+encoded_merge_dl %>%
+  group_by(Law_Firm, Type) %>%
+  count(sort = T) %>%
+  ungroup(Law_Firm, Type) %>%
+  filter(n >= 50) %>%
+  ggplot(aes(y = reorder(Law_Firm, n), x = n)) +
+  geom_col(position = position_dodge2(), 
+           width = .4,
+           orientation = "y",
+           aes(fill = Type)) +
+  labs(title = "Counts of law firms grouped by buyer and seller",
+       y = "Counts") +
+  theme_linedraw() +
+  theme(axis.text.x = element_text(size = 10),      
+        axis.text.y = element_text(size = 10),       
+        axis.title = element_text(size = 15),  
+        plot.title = element_text(hjust = 0.5, size = 15))
+```
+
+```{r}
+dis_three_matched_stacked %>%
+  filter(Source == "M&A") %>%
+  count(Type, sort = T) %>%
+  kbl(caption = "MA Lawyers grouped by Buyer/Seller", booktabs = T) %>%
+  kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+# Some basic regressions: e.g., regress gender on observable characteristics (e.g., firm, industry, size of deal). Explain what factors explain when women are more likely to appear on a deal.
+
+## First we used Multiple Logistic Regression with all variables
+
+```{r echo=FALSE}
+dat <- dis_three_matched_stacked %>%
+  inner_join(encoded_deal, by = c("Deal_number" = "Deal_number")) %>%
+  select(Gender, Law_Firm, Type, `Law School`, 
+         ProbabilityOfMove, age, `Industry sector`, `Deal value`) %>%
+  mutate(value := str_extract(`Deal value`, "^\\$.*? (million|billion)")) %>%
+  mutate(value1 := ifelse(grepl("million", value),
+                          str_trim(str_extract(value, "\\d.*? "), "right"), 
+                          as.double(str_trim(str_extract(value, "\\d.*? "), "right")) * 1000))
+dat$value1 <- as.double(dat$value1)
+dat <- dat %>%
+  select(Gender, Law_Firm, Type, `Law School`, 
+         ProbabilityOfMove, age, `Industry sector`, value1)
+dat$Gender <- factor(dat$Gender, levels = c("Male", "Female"), labels = c("Male", "Female"))
+dat$ProbabilityOfMove <- as.double(dat$ProbabilityOfMove)
+```
+
+```{r}
+logit <- glm(Gender ~ ., data = dat, family='binomial')
+```
+
+```{r echo=FALSE}
+varImp(logit) %>% arrange(desc(Overall)) %>% 
+  rownames_to_column(var = "variable") %>%
+  top_n(30) %>%
+  ggplot(aes(y = reorder(variable, Overall), x = Overall)) +
+  geom_col(position = position_dodge2(), 
+           width = .4,
+           orientation = "y",
+           fill = "red",
+           color = "white") +
+  labs(title = "Variable Importance by logistic regression on Gender",
+       y = "Importance") +
+  theme_linedraw() +
+  theme(axis.text.x = element_text(size = 10),      
+        axis.text.y = element_text(size = 10),       
+        axis.title = element_text(size = 15),  
+        plot.title = element_text(hjust = 0.5, size = 18))
+```
+
+```{r echo=FALSE}
+data.frame(Coef = logit$coefficients) %>%
+  rownames_to_column(var = "variable") %>%
+  arrange(desc(Coef)) %>% 
+  top_n(10) %>%
+  ggplot(aes(y = reorder(variable, Coef), x = Coef)) +
+  geom_col(position = position_dodge2(), 
+           width = .4,
+           orientation = "y",
+           fill = "red",
+           color = "white") +
+  labs(title = "Variable Coefficients by logistic regression on Gender",
+       y = "Importance") +
+  theme_linedraw() +
+  theme(axis.text.x = element_text(size = 10),      
+        axis.text.y = element_text(size = 18),       
+        axis.title = element_text(size = 20),  
+        plot.title = element_text(hjust = 0.5, size = 22))
+```
+
+### age coefficients
+
+```{r}
+data.frame(Coef = logit$coefficients) %>%
+  rownames_to_column(var = "variable") %>%
+  filter(variable == "age")
+```
+
+### Law_school coefficient signs
+
+```{r echo=FALSE}
+data.frame(Coef = logit$coefficients) %>%
+  rownames_to_column(var = "variable") %>%
+  filter(grepl("Law_school", variable)) %>%
+  filter(Coef > 0) %>% nrow
+
+data.frame(Coef = logit$coefficients) %>%
+  rownames_to_column(var = "variable") %>%
+  filter(grepl("Law_school", variable)) %>%
+  filter(Coef < 0) %>% nrow
+```
+
+### Law_Firm coefficient signs
+
+```{r echo=FALSE}
+data.frame(Coef = logit$coefficients) %>%
+  rownames_to_column(var = "variable") %>%
+  filter(grepl("Law_Firm", variable)) %>%
+  filter(Coef > 0) %>% nrow
+
+data.frame(Coef = logit$coefficients) %>%
+  rownames_to_column(var = "variable") %>%
+  filter(grepl("Law_Firm", variable)) %>%
+  filter(Coef < 0) %>% nrow
+```
+
+### Industry Sector coefficient signs
+
+```{r}
+data.frame(Coef = logit$coefficients) %>%
+  rownames_to_column(var = "variable") %>%
+  filter(grepl("Industry", variable)) %>%
+  filter(Coef > 0) %>% nrow
+
+data.frame(Coef = logit$coefficients) %>%
+  rownames_to_column(var = "variable") %>%
+  filter(grepl("Industry", variable)) %>%
+  filter(Coef < 0) %>% nrow
+```
+
+## Multiple Logistic Regression with all variables except for Law Schol and Law firm
+
+```{r}
+logit <- glm(Gender ~ . - Law_Firm - `Law School`, data = dat, family='binomial')
+varImp(logit) %>% arrange(desc(Overall)) %>% 
+  rownames_to_column(var = "variable") %>%
+  top_n(30) %>%
+  ggplot(aes(y = reorder(variable, Overall), x = Overall)) +
+  geom_col(position = position_dodge2(), 
+           width = .4,
+           orientation = "y",
+           fill = "red",
+           color = "white") +
+  labs(title = "Variable Importance by logistic regression on Gender",
+       y = "Importance") +
+  theme_linedraw() +
+  theme(axis.text.x = element_text(size = 10),      
+        axis.text.y = element_text(size = 10),       
+        axis.title = element_text(size = 15),  
+        plot.title = element_text(hjust = 0.5, size = 18))
+```
+## Random Forest with the whole variables used
+
+```{r}
+dat <- dat %>% rename(Law_school = `Law School`, Industry_sector=`Industry sector`)
+rand <- randomForest(Gender ~ . , data = dat, na.action = na.omit)
+```
+
+### Variable Importance after fitting our model
+
+```{r echo=FALSE}
+varImp(rand) %>%
+  rownames_to_column(var = "variable") %>%
+  ggplot(aes(y = reorder(variable, Overall), x = Overall)) +
+  geom_col(position = position_dodge2(), 
+           width = .4,
+           orientation = "y",
+           fill = "red",
+           color = "white") +
+  labs(title = "Variable Importance by Random Forest on Gender",
+       y = "Importance") +
+  theme_linedraw() +
+  theme(axis.text.x = element_text(size = 10),      
+        axis.text.y = element_text(size = 20),       
+        axis.title = element_text(size = 20),  
+        plot.title = element_text(hjust = 0.5, size = 22))
+```
+
+# From two method, Logistic Classification and Random Forest, we can tell that Age, Law_Firm, Law_school are obvious significant when predicting Gender. From huge positive coefficients bar plots, at least we can tell that Law_SchoolMeMPhis can make more likely Women on the deals. And age is another huge negative affects which can make huge Adverse conditions for women appearing on Deals. Deal Value and Type(buyer/Seller) aren't significant variables affecting women.
+
+## As for other law_school and law_firm coefficients, there are both positive and negative coefficients affecting women showing on Deals. 
+
+1. In total, there are 128 Law_school coefficients greater than 0, while 18 Law_school lower than 0, which means Law_school in general make positive affects on women showing on Deals.
+2. However, there are 174 Law_Firm coefficients greater than 0, while 296 Law_Firm lower than 0, which means Law_Firm in general make negative affects on women showing on Deals.
+3. There are 17 Industrial coefficients greater than 0, while 30 Industrial sector lower than 0, which means Industrial Sector in general make negative affects on women showing on Deals.
+
+
 
