@@ -3,7 +3,10 @@ title: "Compare missing versus non-missing Statistics"
 author: "Li Yuan"
 date: "7/14/2021"
 geometry: margin=1.1cm
-output: pdf_document
+output: 
+  pdf_document:
+    toc: true
+    toc_depth: 3
 ---
 
 ```{r setup, include=FALSE}
