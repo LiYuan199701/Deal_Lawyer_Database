@@ -9,10 +9,13 @@ thanks: "Advisor: Tracey George and Albert"
 toccolor: "blue"
 linkcolor: "red"
 documentclass: "article"
+bibliography: references.bib
+csl: asa.csl
 output: 
   pdf_document:
     toc: true
     toc_depth: 2
+    citation_package: biblatex
 ---
 
 ```{r setup, include=FALSE}
@@ -26,8 +29,6 @@ knitr::opts_chunk$set(echo = TRUE, cache = T,
                       attr.source='.numberLines')
 ```
 
-\newpage
-
 # Load packages
 
 ```{r, message=FALSE}
@@ -40,6 +41,7 @@ library(stringi)
 library(textclean)
 library(SemNetCleaner)
 library(readxl)
+library(janitor)
 
 library(patchwork)
 library(ggrepel)
@@ -52,6 +54,7 @@ library(caret)
 library(randomForest)
 library(corrplot)
 library(lubridate)
+library(babynames)
 ```
 
 # Load data
@@ -80,6 +83,7 @@ encoded_deal <- deal %>%
   select(Deal_number, everything(), -`Deal name`)
 #View(encoded_deal)
 ```
+
 
 # How many lawyers are unknown (NA and “not disclosed”)? 
 
@@ -113,7 +117,7 @@ p1_miss <- missing_deal %>%
   count(`Industry sector`) %>%
   ggplot(aes(y = reorder(`Industry sector`, n), x = n)) +
   #geom_histogram(stat="count") #+
-  geom_col(fill = "red", color = "white", orientation = "y") + 
+  geom_col(fill = "red", orientation = "y") + 
   theme_linedraw() +
   labs(x="\nIndustry Sector", y="total counts", 
        title = "Different Industry Sectors of missing lawyers") +
@@ -145,7 +149,7 @@ p1_non <- non_missing_deal %>%
   count(`Industry sector`) %>%
   ggplot(aes(y = reorder(`Industry sector`, n), x = n)) +
   #geom_histogram(stat="count") #+
-  geom_col(fill = "red", color = "white", orientation = "y") + 
+  geom_col(fill = "red", orientation = "y") + 
   theme_linedraw() +
   labs(x="\nIndustry Sector", y="total counts", 
        title = "Different Industry Sectors of non-missing lawyers") +
@@ -460,7 +464,7 @@ missing_law_firm <- missing_law_firm %>%
 non_missing_law_firm <- non_missing_law_firm %>%
   mutate(type := "non_missing")
 miss_non_miss_law_firm <- rbind(missing_law_firm, non_missing_law_firm)
-View(miss_non_miss_law_firm)
+#View(miss_non_miss_law_firm)
 ```
 
 #### Plot it based on types
@@ -534,13 +538,13 @@ There are 904 attorneys without biographical info.
 att_miss_bio %>%
  #distinct(First, Last, .keep_all = T) %>%
   ggplot(aes(x = year)) +
-  geom_histogram(stat="count", fill = "red", color = "white") +
+  geom_histogram(stat="count", fill = "red", width = .35) +
   labs(title = "Counts of attorneys without biograh info") +
   theme_linedraw() +
   theme(axis.text.x = element_text(size = 10),      
         axis.text.y = element_text(size = 10),       
         axis.title = element_text(size = 15),  
-        plot.title = element_text(hjust = 0.5, size = 15))
+        plot.title = element_text(hjust = 0.5, size = 25))
 ```
 
 ## Distribution of deal type
@@ -555,7 +559,9 @@ p_without <- att_miss_bio %>%
     theme(axis.text.x = element_text(size = 10),      
           axis.text.y = element_text(size = 10),       
           axis.title = element_text(size = 13),  
-          plot.title = element_text(hjust = 0.5, size = 13))
+          plot.title = element_text(hjust = 0.5, size = 20),
+          legend.title = element_text(size = 17),
+          legend.text = element_text(size = 14))
 ```
 ## Distribution of attorneys with biograh info
 
@@ -581,7 +587,9 @@ p_with <- dis_three_matched_stacked %>%
   theme(axis.text.x = element_text(size = 10),      
         axis.text.y = element_text(size = 10),       
         axis.title = element_text(size = 13),  
-        plot.title = element_text(hjust = 0.5, size = 13))
+        plot.title = element_text(hjust = 0.5, size = 20),
+        legend.title = element_text(size = 17),
+        legend.text = element_text(size = 14))
 ```
 
 ## Compare them together
@@ -612,8 +620,9 @@ dis_three_matched_stacked %>%
           rename("missing" := n), by = "date3") %>%
   pivot_longer(cols = c("non_missing", "missing"), names_to = "type", values_to = "n") %>%
   ggplot(aes(x = date3, y = n, col = type)) +
-  geom_line() + 
-  geom_point() +
+  geom_line(lwd = 1.2) + 
+  geom_point(cex = 3) +
+  geom_smooth(method = "loess", formula = "y~x", show.legend = T) +
   xlab("") +
   theme(axis.text.x=element_text(angle=60, hjust=1)) +
   scale_x_date(date_breaks = "4 months") +
@@ -621,13 +630,15 @@ dis_three_matched_stacked %>%
   labs(title = "Two Time Series of Counts of attorneys with/without biograh by month",
        y = "Count") +
   theme_light() +
-  theme(axis.text.x = element_text(size = 10, angle = 70, vjust = 0.5),      
+  theme(axis.text.x = element_text(size = 15, angle = 70, vjust = 0.5),      
         axis.text.y = element_text(size = 15),       
         axis.title = element_text(size = 13),  
-        plot.title = element_text(hjust = 0.5, size = 20))
+        plot.title = element_text(hjust = 0.5, size = 23),
+        legend.title = element_text(size = 17),
+        legend.text = element_text(size = 14))
 ```
 
-From these two time series by month, we can tell numbers of attorneys with/without biograh info have very close trend but absolute number. The missing number is less than non-missing number, but they have the same trend.
+From these two time series by month, we can tell numbers of attorneys with/without biograh info have very close trend but absolute number. The missing number is less than non-missing number, but they have the same trend. From the `loess` fitted line, we can tell that non-missing group has much fluctuation than missing group.
 
 # How many deals are missing attorneys’ biographical information?
 
@@ -703,7 +714,9 @@ dis_three_matched_stacked %>%
   group_by(Gender, age_breaks) %>%
   count() %>% 
   arrange(desc(n)) %>%
-  kbl(caption = "Summary Stats Table comparing missing and non-missing", 
+  ungroup() %>%
+  mutate(percentage := round(n / sum(n) * 100, 2)) %>%
+  kbl(caption = "Summary Stats Table of Attorneys with Biograph", 
       booktabs = T) %>%
 kable_styling(latex_options = c("striped", "hold_position"))
 ```
@@ -728,6 +741,8 @@ dis_three_matched_stacked %>%
   group_by(`Law School`, Law_Firm) %>% 
   count() %>% 
   arrange(desc(n)) %>%
+  ungroup(`Law School`, Law_Firm) %>%
+  mutate(Percentage := round(n / sum(n) * 100, 2)) %>%
   head(30) %>%
   kbl(caption = "Top 30 most law school and law firm attended", booktabs = T) %>%
   kable_styling(latex_options = c("striped", "hold_position"))
@@ -779,8 +794,9 @@ type_value_deal %>%
   group_by(`Industry sector`) %>%
   count(sort = T) %>%
   ungroup(`Industry sector`) %>%
+  mutate(percentage := round(n / sum(n) * 100, 2)) %>%
   filter(n >= 10) %>%
-  kbl(caption = "Industry Sector Count", booktabs = T) %>%
+  kbl(caption = "Industry Sector Count and Percentage", booktabs = T) %>%
 kable_styling(latex_options = c("striped", "hold_position"))
 ```
 
@@ -796,6 +812,7 @@ type_value_deal %>%
   group_by(Type, value_breaks) %>%
   count(sort = T) %>%
   ungroup() %>%
+  mutate(percentage := round(n / sum(n) * 100, 2)) %>%
   kbl(caption = "Counts of deals grouped by types and value\\_breaks", booktabs = T) %>%
 kable_styling(latex_options = c("striped", "hold_position"))
 ```
@@ -855,11 +872,11 @@ dat$Gender <- factor(dat$Gender, levels = c("Male", "Female"), labels = c("Male"
 dat$ProbabilityOfMove <- as.double(dat$ProbabilityOfMove)
 ```
 
-```{r eval=FALSE, include=FALSE}
+```{r}
 logit <- glm(Gender ~ ., data = dat, family='binomial')
 ```
 
-```{r eval=FALSE, include=FALSE}
+```{r echo=FALSE}
 varImp(logit) %>% arrange(desc(Overall)) %>% 
   rownames_to_column(var = "variable") %>%
   top_n(30) %>%
@@ -878,7 +895,7 @@ varImp(logit) %>% arrange(desc(Overall)) %>%
         plot.title = element_text(hjust = 0.5, size = 18))
 ```
 
-```{r eval=FALSE, include=FALSE}
+```{r echo=FALSE}
 data.frame(Coef = logit$coefficients) %>%
   rownames_to_column(var = "variable") %>%
   arrange(desc(Coef)) %>% 
@@ -900,7 +917,7 @@ data.frame(Coef = logit$coefficients) %>%
 
 ### age coefficients
 
-```{r eval=FALSE, include=FALSE}
+```{r}
 data.frame(Coef = logit$coefficients) %>%
   rownames_to_column(var = "variable") %>%
   filter(variable == "age")
@@ -908,21 +925,21 @@ data.frame(Coef = logit$coefficients) %>%
 
 ### Law_school coefficient signs
 
-```{r eval=FALSE, include=FALSE}
+```{r}
 data.frame(Coef = logit$coefficients) %>%
   rownames_to_column(var = "variable") %>%
-  filter(grepl("Law_school", variable)) %>%
+  filter(grepl("Law School", variable)) %>%
   filter(Coef > 0) %>% nrow
 
 data.frame(Coef = logit$coefficients) %>%
   rownames_to_column(var = "variable") %>%
-  filter(grepl("Law_school", variable)) %>%
+  filter(grepl("Law School", variable)) %>%
   filter(Coef < 0) %>% nrow
 ```
 
 ### Law_Firm coefficient signs
 
-```{r eval=FALSE, include=FALSE}
+```{r}
 data.frame(Coef = logit$coefficients) %>%
   rownames_to_column(var = "variable") %>%
   filter(grepl("Law_Firm", variable)) %>%
@@ -936,7 +953,7 @@ data.frame(Coef = logit$coefficients) %>%
 
 ### Industry Sector coefficient signs
 
-```{r eval=FALSE, include=FALSE}
+```{r}
 data.frame(Coef = logit$coefficients) %>%
   rownames_to_column(var = "variable") %>%
   filter(grepl("Industry", variable)) %>%
@@ -950,9 +967,9 @@ data.frame(Coef = logit$coefficients) %>%
 
 ## Multiple Logistic Regression with all variables except for Law Schol and Law firm
 
-```{r eval=FALSE, include=FALSE}
-logit <- glm(Gender ~ . - Law_Firm - `Law School`, data = dat, family='binomial')
-varImp(logit) %>% arrange(desc(Overall)) %>% 
+```{r echo=FALSE}
+logit1 <- glm(Gender ~ . - Law_Firm - `Law School`, data = dat, family='binomial')
+varImp(logit1) %>% arrange(desc(Overall)) %>% 
   rownames_to_column(var = "variable") %>%
   top_n(30) %>%
   ggplot(aes(y = reorder(variable, Overall), x = Overall)) +
@@ -971,14 +988,14 @@ varImp(logit) %>% arrange(desc(Overall)) %>%
 ```
 ## Random Forest with the whole variables used
 
-```{r eval=FALSE, include=FALSE}
+```{r}
 dat <- dat %>% rename(Law_school = `Law School`, Industry_sector=`Industry sector`)
 rand <- randomForest(Gender ~ . , data = dat, na.action = na.omit)
 ```
 
 ### Variable Importance after fitting our model
 
-```{r eval=FALSE, include=FALSE}
+```{r echo=FALSE}
 varImp(rand) %>%
   rownames_to_column(var = "variable") %>%
   ggplot(aes(y = reorder(variable, Overall), x = Overall)) +
@@ -1006,5 +1023,160 @@ As for other law_school and law_firm coefficients, there are both positive and n
 2. However, there are 174 Law_Firm coefficients greater than 0, while 296 Law_Firm lower than 0, which means Law_Firm in general make negative affects on women showing on Deals.
 3. There are 17 Industrial coefficients greater than 0, while 30 Industrial sector lower than 0, which means Industrial Sector in general make negative affects on women showing on Deals.
 
+# Predict Gender for attorneys without biograh info
 
+```{r, warning=F, message=FALSE}
+name_gender_dataset <- read_csv("../data/gender/name_gender_dataset.csv")
+#View(name_gender_dataset)
+```
 
+We collect baby names from 1940 to 1990 provided by SSA since this year range covers most lawyer birth years.
+
+```{r include=FALSE}
+name_1940_1990 <- babynames %>%
+  filter(1990 >= year & year >= 1940) %>% 
+  group_by(name, sex) %>%
+  summarise(total := sum(n)) %>% 
+  ungroup() %>%
+  arrange(desc(total))
+
+app_1940_1990 <- applicants %>%
+  filter(1990 >= year & year >= 1940) %>%
+  group_by(sex) %>%
+  summarise(total1 := sum(n_all)) %>%
+  ungroup()
+
+name_1940_1990 <- name_1940_1990 %>%
+  inner_join(app_1940_1990, by = "sex") %>%
+  mutate(prop := total / total1) %>%
+  group_by(name) %>%
+  mutate(prop1 := total / sum(total)) %>%
+  arrange(prop1) %>%
+  filter(prop1 >= 0.25) %>%
+  group_by(name) %>%
+  mutate(sex1 := case_when(
+    n() == 1 ~ sex,
+    n() == 2 ~ "unclear"
+  )) %>%
+  distinct(name, sex1, .keep_all = T) %>%
+  select(name, sex1, prop1)
+```
+
+## We displayed top 10 rows.
+
+```{r}
+head(name_1940_1990,10) %>%
+  kbl(caption = "Baby Names from 1940 to 1990 provided by SSA", booktabs = T) %>% 
+  kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+```{r}
+gender_UCI <- name_gender_dataset %>%
+  group_by(Name) %>%
+  mutate(prop := Count / sum(Count)) %>%
+  filter(prop >= 0.25) %>%
+  group_by(Name) %>%
+  mutate(sex := case_when(
+    n() == 1 ~ Gender,
+    n() == 2 ~ "unclear"
+  )) %>%
+  distinct(Name, sex, .keep_all = T) %>%
+  select(Name, sex, prop)
+```
+
+We used `Gender by Name Data Set` from https://archive.ics.uci.edu/ml/datasets/Gender+by+Name# as the supplementary to teh first babynames data. We displayed top 10 rows.
+
+```{r}
+head(gender_UCI, 10) %>%
+  kbl(caption = "Names and Genders from provided by UCI", booktabs = T) %>% 
+  kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+We match attorney without biograh info using these two new gender prediction by first name dataset.
+
+```{r}
+att_miss_with_gender <- att_miss_bio %>%
+  left_join(name_1940_1990, by = c("First" = "name")) %>% 
+  left_join(gender_UCI, by = c("First" = "Name")) %>%
+  mutate(gender := case_when(
+    is.na(sex1) ~ sex,
+    !is.na(sex1) ~ sex1
+  ))
+```
+
+## Make some plots on Gender
+
+```{r echo=FALSE}
+att_miss_with_gender %>%
+  drop_na(gender) %>%
+  group_by(gender) %>%
+  count() %>%
+  ggplot(aes(x = reorder(gender, -n), y = n)) +
+  geom_col(fill = "red", width = .1) +
+  labs(title = "Counts of gender on attorneys without biograh info",
+       y = "Counts", x = "") +
+  theme_linedraw() +
+  theme(axis.text.x = element_text(size = 20),      
+        axis.text.y = element_text(size = 20),       
+        axis.title = element_text(size = 20),  
+        plot.title = element_text(hjust = 0.5, size = 25))
+```
+
+From this plot we can tell that male are dominant without bigraph info.
+
+## Two-Proportions Z-Test of Gender between missing versus non-missing
+
+The two-proportions z-test is used to compare two observed proportions. We want to know whether the proportions of female are the same in the two groups , missing biograph versus non-missing biograph?
+
+Let's pull up gender counts in attorneys with biograph info.
+
+```{r}
+dis_three_matched_stacked %>%
+  drop_na(Gender) %>%
+  group_by(Gender) %>%
+  count() %>%
+  kbl(caption = "Gender Counts of attorneys with biograph", booktabs = T) %>% 
+  kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+### Research questions
+
+**Whether the observed proportion of females in group missing (Pm) is equal to the observed proportion of females in group non-missing (Pnm)?**
+$$H_{0}: P_{m}=P_{nm}$$
+$$H_{a}: P_{m} \neq P_{nm} \;\;(\text{different})$$
+
+The z-test statistics can be calculated as follow:
+$$z=\frac{P_{m}-P_{nm}}{\sqrt{p q / n_{m}+p q / n_{nm}}}$$
+where $p$ and $q$ are the overall proportions.
+
+### Form a contingency table
+
+```{r echo=FALSE}
+att_miss_with_gender %>%
+  drop_na(gender) %>%
+  group_by(gender) %>%
+  count() %>%
+  mutate(Gender := case_when(
+    gender == "F" ~ "Female",
+    gender == "M" ~ "Male"
+  )) %>%
+  ungroup() %>%
+  rename(missing := n) %>%
+  inner_join(
+  dis_three_matched_stacked %>%
+  drop_na(Gender) %>%
+  group_by(Gender) %>%
+  count() %>%
+  rename(non_missing := n), by = "Gender") %>%
+  select(Gender, missing, non_missing) %>%
+  kbl(caption = "Gender Counts by missing versus non missing", booktabs = T) %>% 
+  kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+```{r}
+prop.test(x = c(194, 579), n = c(194 + 1126, 579 + 4766))
+```
+
+**The p-value of the test is 0.000105, which is less than the significance level $\alpha = 0.05$. We can conclude that the proportion of female is significantly different in the two groups with a p-value = 0.000105. The female proportion estimate of missing group is about 0.1469 which is greater than that of non-missing group, 0.1083. We can say that there are missing female biograph than non-missing.**
+
+Thanks for [@RCoreTeam], [@rstudio], [@Chang2015], [@ggplot2], [@tidyverse], [@stringi], [@kableExtra], [@caret], [@randomForest], [@babynames] and gender prediction dataset from UCI [@Dua:2019]
